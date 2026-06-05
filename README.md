@@ -1,4 +1,5 @@
 # 同济大学 数字电路实验 — FPGA 大作业
+（感谢kiro 老登希望能帮学弟学妹们省点时间吧 我其实根本没耐心看23G的资料）
 
 基于 **EGO1 开发板**（Xilinx Artix-7 XC7A35T，`xc7a35tcsg324-1`）、**Vivado** 完成的两个 Verilog 设计。
 
