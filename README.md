@@ -19,15 +19,15 @@
     └── stopwatch.xdc    引脚约束
 ```
 
-## 如何在 Vivado 中重建工程
+## 如何在 Vivado 中打开工程并运行本项目
 
 1. 新建 RTL Project，器件选 `xc7a35tcsg324-1`
 2. Add Sources → 添加该作业目录下的 3 个 `.v` 文件
 3. Add Constraints → 添加 `.xdc` 文件
 4. 设顶层：交通灯为 `smg`，秒表为 `mb`
-5. Generate Bitstream → Program Device 下载到板子
+5. Run Synthesis → Run Implementation → Generate Bitstream 至此不需要板子
+6. Open Hardware Manager → Open Target → 弹窗选择 Auto connect → Program Device 点击板子 → 弹窗选择bit文件 → 点击Program 下载到板子
 
-> 仓库只保存源码（`.v` / `.xdc`）。不包含 Vivado 工程文件（`.xpr`）和编译产物（`.runs` / `.cache`），因为它们体积大且与本机路径绑定，不可移植。
 
 ## 交通灯功能
 
@@ -37,5 +37,5 @@
 ## 秒表功能
 
 正计时与定时倒计时双模式（SW0 切换）；0.1s 精度；
-启动/暂停/复位；S4 分段记圈、保存 5 组并可查阅；
-定时模式可用按键设定秒数与 0.1s 小数位，倒计时到 0 闪烁提示。
+S2启动/S0暂停/Reset复位；S4 分段记圈、保存 5 组并可查阅。拨动SW1查看数据 ，按S2切换组，led显示第0-4组的二进制编码；
+定时模式可用按键设定秒数与 0.1s 小数位，倒计时到 0  led闪烁提示，按S2、S0后常亮。
