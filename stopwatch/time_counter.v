@@ -1,19 +1,20 @@
-// 秒表计时核心：覆盖评分表 13 项（分段记圈 + 查阅版）
-//   SW0(mode):  0=正计时  1=定时倒计时
+// 八位数码管计时核心  (HH MM SS CC = 时-分-秒-厘秒)
+//   时 00-23(24进制)  分/秒 00-59(60进制)  厘秒 00-99(100进制, 0.01s)
+//   SW0(mode):  0=正计时   1=定时倒计时
 //   SW1(viewsw):查阅开关，拨上后每按 S2 切换查看第 0~4 组记录
-//   定时模式未运行未完成 = 设置态：S1加 S0减 设定秒数(0-99)
-//   S2启动/继续(查阅态=翻组)  S0停止/设置减  S6复位  S4记圈(分段)
-//   data: 0.1s 精度；S4记录的是“距上次S4或起点”的时长
+//   S2 启动/继续(查阅态=翻组)   S0 暂停 / 设置态秒-
+//   S6 复位   S4 记录“当前数码管显示的读数”(时刻, 非时间段)
+//   S1 设置态秒+    S3 设置态分+   (仅定时模式未启动时为设置态)
 module time_counter(clk, start, stop, rst, lap, inc, frac, mode, viewsw, data, led);
     input         clk, start, stop, rst, lap, inc, frac, mode, viewsw;
-    output [15:0] data;
+    output [31:0] data;            // 8 位 BCD
     output reg [7:0] led;
 
-    // ---- 0.1 秒节拍 ----
-    reg [31:0] cnt100 = 0;  reg tick = 0;
+    // ---- 厘秒节拍: 100MHz / 1,000,000 = 100Hz (10ms) ----
+    reg [31:0] cnt = 0;  reg tick = 0;
     always @(posedge clk)
-        if (cnt100 == 32'd10000000 - 1) begin cnt100 <= 0; tick <= 1; end
-        else begin cnt100 <= cnt100 + 1; tick <= 0; end
+        if (cnt == 32'd1000000 - 1) begin cnt <= 0; tick <= 1; end
+        else begin cnt <= cnt + 1; tick <= 0; end
 
     // ---- 去抖采样 ~10ms ----
     reg [19:0] scnt = 0;  reg stick = 0;
@@ -21,17 +22,17 @@ module time_counter(clk, start, stop, rst, lap, inc, frac, mode, viewsw, data, l
         if (scnt == 20'd1000000 - 1) begin scnt <= 0; stick <= 1; end
         else begin scnt <= scnt + 1; stick <= 0; end
 
-    // ---- ~2Hz 闪烁信号 ----
+    // ---- ~2Hz 闪烁 ----
     reg [31:0] fcnt = 0;  reg blink = 0;
     always @(posedge clk)
         if (fcnt == 32'd25000000 - 1) begin fcnt <= 0; blink <= ~blink; end
         else fcnt <= fcnt + 1;
 
-    reg run = 0, done = 0, ack = 0;
-    reg started = 0;   // 是否已启动过(启动后暂停不再算设置态)
+    reg run = 0, done = 0, ack = 0, started = 0;
     wire setting = mode & ~run & ~done & ~viewsw & ~started;   // 定时设置态
+    wire set_up  = ~mode & ~run & ~started & ~viewsw;          // 正计时调整态(S4 调小时)
 
-    // ---- 按键边沿 + S1长按连加 ----
+    // ---- 按键边沿 + S1/S3 长按连加 ----
     reg a_st=0,b_st=0, a_sp=0,b_sp=0, a_rs=0,b_rs=0, a_lp=0,b_lp=0;
     reg p_st=0,p_sp=0,p_rs=0,p_lp=0;
     reg [7:0] h_in=0;  reg a_in=0;  reg p_in=0;
@@ -41,7 +42,7 @@ module time_counter(clk, start, stop, rst, lap, inc, frac, mode, viewsw, data, l
         if (stick) begin
             if (a_st&&!b_st) p_st<=1;   b_st<=a_st; a_st<=start;
             if (a_sp&&!b_sp) p_sp<=1;   b_sp<=a_sp; a_sp<=stop;
-            if (a_rs&&!b_rs) p_rs<=1;   b_rs<=a_rs; a_rs<=~rst;   // S6低有效
+            if (a_rs&&!b_rs) p_rs<=1;   b_rs<=a_rs; a_rs<=~rst;   // S6 低有效
             if (a_lp&&!b_lp) p_lp<=1;   b_lp<=a_lp; a_lp<=lap;
             a_in <= inc;
             if (a_in) begin h_in<=h_in+1;
@@ -56,104 +57,120 @@ module time_counter(clk, start, stop, rst, lap, inc, frac, mode, viewsw, data, l
         end
     end
 
-    // ---- 设定秒数(0-99) + 小数位(0-9, 0.1s) ----
-    reg [6:0] set_sec  = 7'd10;
-    reg [3:0] set_frac = 4'd0;
+    // ---- 定时设定值(时=0, 分/秒可调) ----
+    reg [5:0] set_min = 6'd0;
+    reg [5:0] set_sec = 6'd10;
     always @(posedge clk)
-        if (p_rs) begin set_sec <= 7'd10; set_frac <= 4'd0; end  // 复位回 10.0s
+        if (p_rs) begin set_min<=6'd0; set_sec<=6'd10; end
         else if (setting) begin
-            if (p_in & (set_sec < 7'd99)) set_sec <= set_sec + 1;
-            if (p_sp & (set_sec > 7'd0 )) set_sec <= set_sec - 1;
-            if (p_fr) set_frac <= (set_frac==4'd9) ? 4'd0 : set_frac + 1;  // S3:0-9循环
+            if (p_in) set_sec <= (set_sec==6'd59)?6'd0:set_sec+1;  // S1 秒+
+            if (p_sp) set_sec <= (set_sec==6'd0 )?6'd59:set_sec-1; // S0 秒-
+            if (p_fr) set_min <= (set_min==6'd59)?6'd0:set_min+1;  // S3 分+
         end
-    // 设定总值(0.1s 单位)
-    wire [13:0] set_val = set_sec*14'd10 + set_frac;
 
-    // ---- 主计数 + 5 组分段记录 ----
-    reg [13:0] tcnt = 0;
-    reg [13:0] mark = 0;                         // 上次记圈/起点的读数
-    reg [13:0] lap0=0,lap1=0,lap2=0,lap3=0,lap4=0;
-    reg [2:0]  lidx = 0;                         // 下一写入位置 0..4
-    reg [2:0]  vidx = 0;                         // 查阅第几组
+    // ---- 主计数: 厘秒/秒/分/时 ----
+    reg [6:0] cs  = 0;   // 厘秒 0-99
+    reg [5:0] sec = 0;   // 秒   0-59
+    reg [5:0] mnt = 0;   // 分   0-59
+    reg [6:0] hr  = 0;   // 时   0-99 (100进制)
 
-    // 本段时长 = 计数变化量的绝对值
-    wire [13:0] seg = (mode==0) ? (tcnt - mark) : (mark - tcnt);
+    // ---- 当前显示读数(8 位 BCD) ----
+    wire [3:0] h10 = hr  / 10,  h01 = hr  % 10;
+    wire [3:0] m10 = mnt / 10,  m01 = mnt % 10;
+    wire [3:0] s10 = sec / 10,  s01 = sec % 10;
+    wire [3:0] c10 = cs  / 10,  c01 = cs  % 10;
+    wire [31:0] live = { h10, h01, m10, m01, s10, s01, c10, c01 };
+
+    // ---- 5 组记录 + 查阅指针 ----
+    reg [31:0] rec0=0, rec1=0, rec2=0, rec3=0, rec4=0;
+    reg [2:0]  lidx = 0;   // 下一写入位置 0..4
+    reg [2:0]  vidx = 0;   // 查阅第几组
 
     always @(posedge clk) begin
         if (p_rs) begin
             run<=0; done<=0; ack<=0; started<=0; vidx<=0; lidx<=0;
-            lap0<=0; lap1<=0; lap2<=0; lap3<=0; lap4<=0;
-            if (mode) begin tcnt<=14'd100; mark<=14'd100; end  // 复位回 10.0s
-            else      begin tcnt<=0;       mark<=0;       end
+            cs<=0; sec<=0; mnt<=0; hr<=0;
+            rec0<=0; rec1<=0; rec2<=0; rec3<=0; rec4<=0;
         end else begin
-            // 设置态：tcnt 跟随设定值
-            if (setting) begin tcnt<=set_val; mark<=set_val; end
-            // 正计时模式未启动时归零(防止从定时设定值残留开始)
-            else if (mode==0 & ~started & ~run) begin tcnt<=0; mark<=0; end
+            // 设置态: 计数跟随设定值
+            if (setting) begin cs<=0; sec<=set_sec; mnt<=set_min; hr<=0; end
+            // 正计时未启动时分秒归零(小时保留, 由 S4 调整)
+            else if (mode==0 & ~started & ~run) begin cs<=0; sec<=0; mnt<=0; end
 
-            // S2：查阅态翻组；倒计时完成态=确认(常亮)；否则启动
+            // S2: 查阅翻组 / 完成确认 / 启动继续
             if (p_st) begin
                 if (viewsw)    vidx <= (vidx==3'd4)?3'd0:vidx+1;
-                else if (done) ack  <= 1;        // 完成后按S2确认，LED3转常亮
+                else if (done) ack  <= 1;
                 else           begin run <= 1; started <= 1; end
             end
-            // S0 停止（非设置、非查阅）；完成态时 S0 也可确认常亮
+            // S0: 暂停 (非设置/非查阅); 完成态可确认
             if (p_sp & ~setting & ~viewsw) begin
                 if (done) ack <= 1;
                 else      run <= 0;
             end
 
-            // S4 记圈：存本段时长，mark 移到当前
-            if (p_lp) begin
-                case (lidx)
-                    0: lap0<=seg; 1: lap1<=seg; 2: lap2<=seg;
-                    3: lap3<=seg; 4: lap4<=seg;
-                endcase
-                lidx <= (lidx==3'd4)?3'd0:lidx+1;
-                mark <= tcnt;
+            // S4: 正计时调整态=小时+ (0-99循环, 100进制); 否则=记录当前读数
+            if (p_lp & ~viewsw) begin
+                if (set_up)
+                    hr <= (hr==7'd99) ? 7'd0 : hr+1;
+                else begin
+                    case (lidx)
+                        0: rec0<=live; 1: rec1<=live; 2: rec2<=live;
+                        3: rec3<=live; 4: rec4<=live;
+                    endcase
+                    lidx <= (lidx==3'd4)?3'd0:lidx+1;
+                end
             end
 
-            // 计数推进
+            // 计时推进
             if (run & tick) begin
                 if (mode==0) begin
-                    if (tcnt>=14'd9999) tcnt<=0; else tcnt<=tcnt+1;
+                    // 正计时: 厘秒→秒→分→时 级联进位, 时 24 进制
+                    if (cs==7'd99) begin cs<=0;
+                        if (sec==6'd59) begin sec<=0;
+                            if (mnt==6'd59) begin mnt<=0;
+                                hr <= (hr==7'd99)?7'd0:hr+1;
+                            end else mnt<=mnt+1;
+                        end else sec<=sec+1;
+                    end else cs<=cs+1;
                 end else begin
-                    if (tcnt==0) begin run<=0; done<=1; end   // 到0停住
-                    else tcnt<=tcnt-1;
+                    // 倒计时: 借位递减, 到 0 完成
+                    if (cs==0) begin
+                        if (sec==0) begin
+                            if (mnt==0) begin
+                                if (hr==0) begin run<=0; done<=1; end
+                                else begin hr<=hr-1; mnt<=6'd59; sec<=6'd59; cs<=7'd99; end
+                            end else begin mnt<=mnt-1; sec<=6'd59; cs<=7'd99; end
+                        end else begin sec<=sec-1; cs<=7'd99; end
+                    end else cs<=cs-1;
                 end
             end
         end
     end
 
     // ---- 显示来源 ----
-    reg [13:0] showv;
+    reg [31:0] showv;
     always @(*)
         if (viewsw)
             case (vidx)
-                3'd0: showv=lap0; 3'd1: showv=lap1; 3'd2: showv=lap2;
-                3'd3: showv=lap3; 3'd4: showv=lap4; default: showv=lap0;
+                3'd0: showv=rec0; 3'd1: showv=rec1; 3'd2: showv=rec2;
+                3'd3: showv=rec3; 3'd4: showv=rec4; default: showv=rec0;
             endcase
-        else if (setting) showv = set_val;
-        else showv = tcnt;
-
-    wire [3:0] d3 = showv / 1000;
-    wire [3:0] d2 = (showv / 100) % 10;
-    wire [3:0] d1 = (showv / 10) % 10;
-    wire [3:0] d0 = showv % 10;
-    assign data = {d3, d2, d1, d0};
+        else showv = live;
+    assign data = showv;
 
     // ---- LED 状态 ----
     //  正计时: [7]运行 [6]暂停
-    //  倒计时: [5]运行 [4]暂停 [3]计时完成(到0)
-    //  查阅时: [3:0]组号(viewsw 优先)
+    //  倒计时: [5]运行 [4]暂停 [3]完成(闪/确认常亮)
+    //  查阅:   [3:0]组号
     always @(*) begin
         led = 8'b0;
-        if (mode==0) begin led[7]=run; led[6]=~run; end
+        if (viewsw) led[3:0] = vidx;
+        else if (mode==0) begin led[7]=run; led[6]=started&~run; end
         else begin
             led[5]=run;
-            if (done) led[3] = ack ? 1'b1 : blink;  // 完成:未确认闪烁,确认后常亮
-            else      led[4]=~run;                   // 暂停(未完成)
+            if (done) led[3] = ack ? 1'b1 : blink;
+            else      led[4] = started & ~run;
         end
-        if (viewsw) led[3:0] = vidx;   // 查阅模式显示组号
     end
 endmodule
