@@ -42,7 +42,8 @@ module smg_ip_model(clk, data, sm_wei, sm_duan);
             4'h7: duan = 8'b0000_0111;
             4'h8: duan = 8'b0111_1111;
             4'h9: duan = 8'b0110_1111;
-            default: duan = 8'b0011_1111;
+            4'hf: duan = 8'b0000_0000;   // 熄灭（消隐位）
+            default: duan = 8'b0000_0000;
         endcase
 
     assign sm_wei  = ~wei_ctrl;

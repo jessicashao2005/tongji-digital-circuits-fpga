@@ -1,11 +1,21 @@
-# 交通灯 编辑模式版 约束文件 (EGO1, 无子板)
+# 交通灯 开关选择编辑版 约束文件 (EGO1, 无子板)
 set_property PACKAGE_PIN P17 [get_ports clk]
-# S2(R15)进出编辑  S1(R17)南北+  S0(R11)南北-  S4(U4)东西+  S3(V1)东西-
+
+# 拨码开关：SW0 进入编辑  SW1 南北直行 SW2 东西直行 SW3 东西转弯 SW4 南北转弯
+# 灯测试模式(按S2进入)下 SW0~SW7 直接控制 8 个 LED
+set_property PACKAGE_PIN P5 [get_ports {sw[0]}]
+set_property PACKAGE_PIN P4 [get_ports {sw[1]}]
+set_property PACKAGE_PIN P3 [get_ports {sw[2]}]
+set_property PACKAGE_PIN P2 [get_ports {sw[3]}]
+set_property PACKAGE_PIN R2 [get_ports {sw[4]}]
+set_property PACKAGE_PIN M4 [get_ports {sw[5]}]
+set_property PACKAGE_PIN N4 [get_ports {sw[6]}]
+set_property PACKAGE_PIN R1 [get_ports {sw[7]}]
+
+# 按键：S3(V1)加一  S0(R11)减一  S2(R15)按住显示9999
+set_property PACKAGE_PIN V1  [get_ports key_inc]
+set_property PACKAGE_PIN R11 [get_ports key_dec]
 set_property PACKAGE_PIN R15 [get_ports s2]
-set_property PACKAGE_PIN R17 [get_ports ns_inc]
-set_property PACKAGE_PIN R11 [get_ports ns_dec]
-set_property PACKAGE_PIN U4  [get_ports we_inc]
-set_property PACKAGE_PIN V1  [get_ports we_dec]
 
 # 数码管位选
 set_property PACKAGE_PIN G2 [get_ports {sm_wei[0]}]
@@ -34,11 +44,17 @@ set_property PACKAGE_PIN G4 [get_ports {led_panel[6]}]
 set_property PACKAGE_PIN F6 [get_ports {led_panel[7]}]
 
 set_property IOSTANDARD LVCMOS33 [get_ports clk]
+set_property IOSTANDARD LVCMOS33 [get_ports {sw[0]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sw[1]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sw[2]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sw[3]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sw[4]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sw[5]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sw[6]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sw[7]}]
+set_property IOSTANDARD LVCMOS33 [get_ports key_inc]
+set_property IOSTANDARD LVCMOS33 [get_ports key_dec]
 set_property IOSTANDARD LVCMOS33 [get_ports s2]
-set_property IOSTANDARD LVCMOS33 [get_ports ns_inc]
-set_property IOSTANDARD LVCMOS33 [get_ports ns_dec]
-set_property IOSTANDARD LVCMOS33 [get_ports we_inc]
-set_property IOSTANDARD LVCMOS33 [get_ports we_dec]
 set_property IOSTANDARD LVCMOS33 [get_ports {sm_wei[0]}]
 set_property IOSTANDARD LVCMOS33 [get_ports {sm_wei[1]}]
 set_property IOSTANDARD LVCMOS33 [get_ports {sm_wei[2]}]
